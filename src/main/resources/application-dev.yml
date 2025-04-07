@@ -1,0 +1,51 @@
+server:
+  port: 8089
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: time-processing-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.neogroup.neogroup.entity
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      linger-ms: 1
+      properties:
+        enable.idempotence: true
+  sql:
+    init:
+      mode: always
+  main:
+    allow-bean-definition-overriding: true
+  application:
+    name: neo_group_test
+  data:
+    mongodb:
+      uri: mongodb://mongodb:mongodb@localhost:27017/data?authSource=admin&serverSelectionTimeoutMS=1000
+      # Connection string to MongoDB
+      auto-index-creation: true
+
+scheduling:
+  records:
+    fixed-rate: 5000
+app:
+  db:
+    retry:
+      interval: 5000
+
+kafka:
+  topic: time-records-topic
+  groupId: time-processing-group
+
+
+
+logging:
+  level:
+    org.mongodb.driver.cluster: ERROR
+    org.mongodb.driver.connection: ERROR
