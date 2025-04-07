@@ -33,7 +33,7 @@ spring:
 
 scheduling:
   records:
-    fixed-rate: 5000
+    fixed-rate: 1000
   enabled: false
 
 kafka:

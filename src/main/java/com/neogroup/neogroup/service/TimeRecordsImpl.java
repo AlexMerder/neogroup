@@ -36,6 +36,10 @@ public class TimeRecordsImpl implements TimeRecords {
 
         List<TimeRecord> timeRecords = timeRecordsRepository.findAllByOrderByTimeAsc();
 
+        if (timeRecords.isEmpty()) {
+            log.info("No time records found");
+            return new TimeRecordsResponse(List.of());
+        }
         return new TimeRecordsResponse(timeRecords.stream().map(currentRecord -> {
             TimeRecordDto timeRecordDto = new TimeRecordDto();
             timeRecordDto.setTime(currentRecord.getTime());

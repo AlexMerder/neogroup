@@ -28,12 +28,11 @@ spring:
   data:
     mongodb:
       uri: mongodb://mongodb:mongodb@localhost:27017/data?authSource=admin&serverSelectionTimeoutMS=1000
-      # Connection string to MongoDB
       auto-index-creation: true
 
 scheduling:
   records:
-    fixed-rate: 5000
+    fixed-rate: 1000
 app:
   db:
     retry:

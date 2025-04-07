@@ -10,6 +10,8 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -24,7 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class TimeRecordConsumer {
 
     private final TimeRecordsRepository timeRecordsRepository;
-    private final ExecutorService dbWriteExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService dbWriteExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
     private final ScheduledExecutorService retryScheduler = Executors.newSingleThreadScheduledExecutor();
 
     private final Queue<TimeRecord> bufferQueue = new ConcurrentLinkedQueue<>();
@@ -45,25 +47,27 @@ public class TimeRecordConsumer {
         processQueue();
     }
 
-    private synchronized void processQueue() {
-        log.info("Attempting to process buffer queue. Queue size: {}", bufferQueue.size());
+    private void processQueue() {
         dbWriteExecutor.submit(() -> {
-            while (!bufferQueue.isEmpty()) {
-                TimeRecord timeRecord = bufferQueue.peek();
+            List<TimeRecord> batch = new ArrayList<>();
+            int batchSize = 100;
+            while (!bufferQueue.isEmpty() && batch.size() < batchSize) {
+                batch.add(bufferQueue.poll());
+            }
+            if (!batch.isEmpty()) {
                 try {
-                    timeRecordsRepository.save(timeRecord);
-                    log.info("Saved timeRecord to database: {}", timeRecord.getTime());
-                    bufferQueue.poll();
+                    timeRecordsRepository.saveAll(batch);
+                    log.info("Saved {} timeRecords to database", batch.size());
                     isDbAvailable.set(true);
                 } catch (DataAccessResourceFailureException ex) {
+                    log.error("The connection to DB is lost: {}", ex.getMessage());
+                    bufferQueue.addAll(batch); // Re-queue on failure
                     if (isDbAvailable.compareAndSet(true, false)) {
-                        log.error("The connection to DB is lost.");
+                        schedulePeriodicRetry();
                     }
-                    schedulePeriodicRetry();
-                    break;
                 } catch (Exception fatalException) {
-                    log.error("Unexpected failure, saving the timeRecord to buffer: {}",
-                        fatalException.getMessage());
+                    log.error("Unexpected failure: {}", fatalException.getMessage());
+                    bufferQueue.addAll(batch);
                     schedulePeriodicRetry();
                 }
             }
@@ -76,6 +80,7 @@ public class TimeRecordConsumer {
         }
 
         retryFuture = retryScheduler.scheduleAtFixedRate(() -> {
+            log.info("Attempting to re-establish connection to DB...");
             if (checkDatabaseConnection()) {
                 retryBufferedRecords();
             }
@@ -97,7 +102,6 @@ public class TimeRecordConsumer {
     }
 
     private synchronized void retryBufferedRecords() {
-        log.info("Attempting to retry buffered records - Queue size: {}", bufferQueue.size());
         while (isDbAvailable.get() && !bufferQueue.isEmpty()) {
             processQueue();
         }
